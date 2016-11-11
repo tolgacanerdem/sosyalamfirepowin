@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+
+    <script src="http://code.jquery.com/jquery-latest.min.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="static/js/bootstrap.min.js"></script>
+    <link rel="stylesheet" type="text/css" href="static/css/bootstrap.min.css">
+    <title></title>
+    <style>
+        .chat{
+            height: 300px;
+			overflow-y: scroll;
+        }
+        #users{
+            display: none;
+        }
+        #chatWrap{
+            display: none;
+            float: left;
+            border: 1px #000 solid;
+        }
+        .error{
+            color: red;
+        }
+        .whisper{
+            color: gray;
+            font-style: italic;
+        }
+
+
+    </style>
+</head>
+<body>
+<nav class="navbar navbar-default">
+    <div class="container-fluid">
+        <!-- Brand and toggle get grouped for better mobile display -->
+        <div class="navbar-header">
+            <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#bs-example-navbar-collapse-1" aria-expanded="false">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </button>
+            <a class="navbar-brand" href="#" id="username">amfichat</a>
+        </div>
+
+        <!-- Collect the nav links, forms, and other content for toggling -->
+        <div class="collapse navbar-collapse" id="bs-example-navbar-collapse-1">
+            <ul class="nav navbar-nav">
+                <li class="active"><a href="#">Link <span class="sr-only">(current)</span></a></li>
+                <li><a href="#">Link</a></li>
+                <li class="dropdown">
+                    <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Dropdown <span class="caret"></span></a>
+                    <ul class="dropdown-menu">
+                        <li><a href="#">Action</a></li>
+                        <li><a href="#">Another action</a></li>
+                        <li><a href="#">Something else here</a></li>
+                        <li role="separator" class="divider"></li>
+                        <li><a href="#">Separated link</a></li>
+                        <li role="separator" class="divider"></li>
+                        <li><a href="#">One more separated link</a></li>
+                    </ul>
+                </li>
+            </ul>
+            <form class="navbar-form navbar-left" role="search">
+                <div class="form-group">
+                    <input type="text" class="form-control" placeholder="Search">
+                </div>
+                <button type="submit" class="btn btn-default">Submit</button>
+            </form>
+            <ul class="nav navbar-nav navbar-right">
+                <li><a href="#">Link</a></li>
+                <li class="dropdown">
+                    <a href="#" class="dropdown-toggle" data-toggle="dropdown" role="button" aria-haspopup="true" aria-expanded="false">Dropdown <span class="caret"></span></a>
+                    <ul class="dropdown-menu">
+                        <li><a href="#">Action</a></li>
+                        <li><a href="#">Another action</a></li>
+                        <li><a href="#">Something else here</a></li>
+                        <li role="separator" class="divider"></li>
+                        <li><a href="#">Separated link</a></li>
+                    </ul>
+                </li>
+            </ul>
+        </div><!-- /.navbar-collapse -->
+    </div><!-- /.container-fluid -->
+</nav>
+<div class="container">
+    <div class="animate"></div>
+
+    <ul class="nav nav-tabs">
+        <li role="presentation" id="login_li" class="active"><a href="#">Giriş</a></li>
+        <li role="presentation" id="online_users_li"><a href="#">Online Kişiler</a></li>
+    </ul>
+
+    <div id="nickWrap">
+        <p>Enter a username:</p>
+        <p id="nickError"></p>
+        <form id="setNick">
+            <input size="35" id="nickname" />
+            <input type="submit" />
+        </form>
+    </div>
+
+    <!-- chat window -->
+    <div id="chatWrap">
+
+        <label class="writing" current-chatter="" style="display: none;">yazıyor...</label>
+        <form id="send-message">
+            <input size="35" id="message" />
+            <input type="submit" />
+        </form>
+    </div>
+
+
+
+    <!-- users -->
+    <div id="users">
+
+    </div>
+</div>
+
+
+<script>
+    $(function(){
+        var url      = window.location.href;
+        var socket = io.connect();
+        var $nickForm = $('#setNick');
+        var $nickError = $('#nickError');
+        var $nickBox = $('#nickname');
+        var $messageForm = $('#send-message');
+        var $messageBox = $('#message');
+        var $chat = $('.chat');
+        var $chatWindow = $('#chatWrap');
+        var $users = $('#users');
+        var current_user = null;
+        var current_chatter = null;
+        var chat_list = [];
+
+
+        function getCurrentTime() {
+            var current_date = new Date();
+            return current_date.getHours() + ':' + current_date.getMinutes();
+        }
+
+        $messageBox.keyup(function () {
+            if(this.value.length < 1) {
+                socket.emit('not writing',{ current_chatter: current_chatter, current_user: current_user } , function () {});
+            }else {
+                socket.emit('writing', { current_chatter: current_chatter, current_user: current_user } , function () {});
+            }
+        });
+
+        socket.on('writing', function (data) {
+            if(data === current_chatter || current_chatter == null)
+                $('.writing').show();
+        });
+
+        socket.on('not writing', function (data) {
+            if(data === current_chatter || current_chatter == null )
+                $('.writing').hide();
+        });
+
+        $nickForm.submit(function(e){
+            e.preventDefault();
+            socket.emit('new user', $nickBox.val(), function(data){
+                if(data){
+                    $('#nickWrap').hide();
+                    $('#users').show();
+                    $('#login_li').hide();
+                } else {
+                    $nickError.html('That username is already taken! Try again!');
+                }
+            });
+            $nickBox.val('');
+
+        });
+
+        socket.on('showOnlineUsers', function(data){
+            var html = '<br>';
+
+            for( i=0; i < data.length; i++){
+                if(data[i] !== current_user){
+                    html +='<button type="button" class="btn btn-primary btn_user">'+ data[i] + '</button>' + '<br>';
+                }
+            }
+            $users.html(html);
+            $('#login_li').removeClass('active');
+            $('#online_users_li').addClass('active');
+		
+
+        });
+
+        socket.on('set current user', function(data){
+            $("#username").text(data);
+           current_user = data;
+        });
+
+        $messageForm.submit(function(e){
+            e.preventDefault();
+            var message = "/w " + current_chatter + " " + $messageBox.val();
+            socket.emit('send message', message, function (data) {
+                //chat e hata mesajı ekle
+                $chat.append('<span class="error"><b>' + data + "</span><br/>");
+            });
+            $messageBox.val('');
+            socket.emit('not writing',{ current_chatter: current_chatter, current_user: current_user } , function () {});
+        });
+        var element = $chat;
+        socket.on('whisper', function (data) {
+            if(current_user !== data.nick){
+                var index = chat_list.indexOf(data.nick);
+                if(index === -1){
+					if($chatWindow.find("[user='"+data.nick+"']").length == 0){
+						$('.nav-tabs').append('<li role="presentation" style="background: #C1C1DA"><a href="#">' + data.nick + '</a></li>');
+						$chatWindow.prepend('<div class="chat" user="'+data.nick+'"></div>');
+						element.scrollTop(element.prop("scrollHeight"));
+					}
+                    $('div[user='+data.nick+']').append('<span class="whisper"><b>' + data.nick + ': </b>' + data.msg + ' ' + getCurrentTime() +"</span><br/>");
+					$('div[user='+data.nick+']').hide();
+					element.scrollTop(element.prop("scrollHeight"));
+                } else {
+                    if(current_chatter !== data.nick) {
+						$('div[user='+data.nick+']').append('<span class="whisper"><b>' + data.nick + ': </b>' + data.msg + ' ' + getCurrentTime() +"</span><br/>");
+						$('.nav-tabs>li:contains('+data.nick+')').css('background','#C1C1DA');
+						element.scrollTop(element.prop("scrollHeight"));
+					}
+						
+                }
+            }
+            //chat e mesaj ekle
+            if(current_chatter === data.nick || data.nick === current_user){
+                $('div[user='+current_chatter+']').append('<span class="whisper"><b>' + data.nick + ': </b>' + data.msg + ' ' + getCurrentTime() +  "</span><br/>");
+				element.scrollTop(element.prop("scrollHeight"));
+			}
+        });
+
+
+        $('#online_users_li').click(function () {
+            $users.show();
+            $chatWindow.hide();
+            $(".nav-tabs>li.active").removeClass("active");
+            $('#online_users_li').addClass('active');
+				current_chatter = "";
+        });
+
+        //onclick user
+        $('body').on('click', '.btn_user', function() {
+            $users.hide();
+            $chatWindow.show();
+            var clicked_nick = this.innerText;
+            current_chatter = clicked_nick;
+            $('#online_users_li').removeClass('active');
+
+            var index = chat_list.indexOf(clicked_nick);
+            if(index === -1){
+                $('.nav-tabs').append('<li role="presentation" class="active"><a href="#">' + clicked_nick + '</a></li>');
+				if($('div[user='+current_chatter+']').length === 0){
+					$chatWindow.prepend('<div class="chat" user="'+clicked_nick+'"></div>');
+				}
+                chat_list.push(clicked_nick);
+            } else {
+                $('.nav-tabs>li:contains('+clicked_nick+')').addClass('active');
+            }
+
+            $('.chat').hide();
+            $('div[user='+clicked_nick+']').show();
+
+
+        });
+        $('body').on('click', '.nav-tabs>li', function() {
+            $(".nav-tabs>li.active").removeClass("active");
+            this.setAttribute('class','active');
+            this.removeAttribute('style');
+            if(this.textContent === 'Online Kişiler' ) {
+                $users.show();
+                $chatWindow.hide();
+            } else{
+                $users.hide();
+                current_chatter = this.textContent;
+                chat_list.push(current_chatter);
+                $chatWindow.show();
+                if($('div[user='+current_chatter+']').length === 0){
+                    $chatWindow.prepend('<div class="chat" user="'+current_chatter+'"></div>');
+                }
+                $('.chat').hide();
+                $('div[user='+current_chatter+']').show();
+
+            }
+        });
+    });
+
+</script>
+
+</body>
+</html>
